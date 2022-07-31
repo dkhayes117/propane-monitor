@@ -36,13 +36,12 @@ fn main() -> ! {
         "AT%XSNRSQ?",     // Signal Noise Ratio
         "AT+CESQ",        // Signal Quality
         "AT%XTEMP?",      // Internal Temperature
-        "AT+CGCONTRDP=0", //
-        "AT+CGCONTRDP?",
-        "AT+CCLK?",      // Reads Real-Time Clock
-        "AT%XMONITOR",   // Read modem parameters
-        "AT+CGDCONT?",   // List of defined contexts
-        "AT+CGPADDR",    // Test command returns a list of <cid> values
-        "AT%XCONNSTAT?", // Reads connectivity statistics
+        "AT+CGCONTRDP=0", // Returns info for an active Packet Data Network(PDN) connection
+        "AT+CCLK?",       // Reads Real-Time Clock
+        "AT%XMONITOR",    // Read modem parameters
+        "AT+CGDCONT?",    // List of defined contexts
+        "AT+CGPADDR",     // Test command returns a list of <cid> values
+        "AT%XCONNSTAT?",  // Reads connectivity statistics
     ] {
         print_at_results(cmd);
     }
