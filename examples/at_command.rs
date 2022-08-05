@@ -4,11 +4,12 @@
 // links in a minimal version of libc
 extern crate tinyrlibc;
 
-use defmt::unwrap;
+use defmt::{unwrap, println};
 use nrf9160_hal::pac::{self, interrupt};
 use propane_monitor as _; // global logger + panicking-behavior + memory layout
 
 // const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
+
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -28,7 +29,6 @@ fn main() -> ! {
     // Initialize the modem
     nrfxlib::init().unwrap();
 
-    // List of AT commands to send to nrf9160 modem
     for cmd in [
         "AT+CFUN=1",      // Sets Radio to Normal
         "AT+CFUN?",       // Read Radio Status
@@ -53,9 +53,9 @@ fn main() -> ! {
 /// Print AT command results
 fn print_at_results(cmd: &str) {
     if let Err(_e) = nrfxlib::at::send_at_command(cmd, |s| {
-        defmt::println!("> {}", s);
+        println!("> {}", s);
     }) {
-        defmt::println!("Err running {}: error", cmd);
+        println!("Err running {}: error", cmd);
     }
 }
 

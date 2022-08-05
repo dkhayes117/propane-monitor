@@ -4,11 +4,12 @@
 // links in a minimal version of libc
 extern crate tinyrlibc;
 
-use defmt::unwrap;
+use defmt::{unwrap, println};
 use nrf9160_hal::pac::{self, interrupt};
 use propane_monitor as _; // global logger + panicking-behavior + memory layout
 
 // const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
+
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -29,6 +30,7 @@ fn main() -> ! {
     nrfxlib::init().unwrap();
 
     for cmd in [
+        "AT%SHORTSWVER", // Check modem firmware version
         "AT+CFUN=1",      // Sets Radio to Normal
         "AT+CFUN?",       // Read Radio Status
         "AT+CEREG=5",     // Sets current network registration status result codes to level 5
@@ -46,17 +48,15 @@ fn main() -> ! {
         print_at_results(cmd);
     }
 
-    // nrfxlib::at::send_at_command(cmd, |r| defmt::println!("Response: {}", r));
-
     propane_monitor::exit();
 }
 
 /// Print AT command results
 fn print_at_results(cmd: &str) {
     if let Err(_e) = nrfxlib::at::send_at_command(cmd, |s| {
-        defmt::println!("> {}", s);
+        println!("> {}", s);
     }) {
-        defmt::println!("Err running {}: error", cmd);
+        println!("Err running {}: error", cmd);
     }
 }
 
