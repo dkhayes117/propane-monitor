@@ -4,12 +4,11 @@
 // links in a minimal version of libc
 extern crate tinyrlibc;
 
-use defmt::{unwrap, println};
+use defmt::{println, unwrap};
 use nrf9160_hal::pac::{self, interrupt};
 use propane_monitor as _; // global logger + panicking-behavior + memory layout
 
 // const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
-
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
