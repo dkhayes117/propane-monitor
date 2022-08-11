@@ -34,7 +34,7 @@ fn main() -> ! {
     pwm.set_period(50u32.hz());
     pwm.enable();
 
-    // Array of tuples holding a calibrated duty_cycle for each gauge level
+    // Array of tuples holding a carcalibrated duty_cycle for each gauge level
     let positions: [(u16, u16); 13] = [
         (5, 111),
         (10, 122),

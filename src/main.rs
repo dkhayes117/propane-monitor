@@ -29,20 +29,12 @@ fn main() -> ! {
     nrfxlib::init().unwrap();
 
     for cmd in [
-        "AT%SHORTSWVER",  // Check modem firmware version
-        "AT+CFUN=1",      // Sets Radio to Normal
-        "AT+CFUN?",       // Read Radio Status
-        "AT+CEREG=5",     // Sets current network registration status result codes to level 5
-        "AT+CEREG?",      // Current network registration status
-        "AT%XSNRSQ?",     // Signal Noise Ratio
-        "AT+CESQ",        // Signal Quality
-        "AT%XTEMP?",      // Internal Temperature
-        "AT+CGCONTRDP=0", // Returns info for an active Packet Data Network(PDN) connection
-        "AT+CCLK?",       // Reads Real-Time Clock
-        "AT%XMONITOR",    // Read modem parameters
-        "AT+CGDCONT?",    // List of defined contexts
-        "AT+CGPADDR",     // Test command returns a list of <cid> values
-        "AT%XCONNSTAT?",  // Reads connectivity statistics
+        "AT%SHORTSWVER",         // Check modem firmware version
+        "AT%XBANDLOCK=1,'1000'", // Set permanent band-lock on Band 4
+        "AT+CFUN=1",             // Sets Radio to Normal
+        "AT+CFUN?",              // Read Radio Status
+        "AT%XCBAND",             // Check current band
+        "AT+CFUN=0",             // Turn Radio Off
     ] {
         print_at_results(cmd);
     }
