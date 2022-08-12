@@ -17,7 +17,7 @@ use nrf9160_hal::{
 };
 use propane_monitor as _; // global logger + panicking-behavior + memory layout
 
-// const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
+const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -51,53 +51,40 @@ fn main() -> ! {
         uarte::Parity::EXCLUDED,
         uarte::Baudrate::BAUD115200,
     );
-    // let mut serial_timer = nrf9160_hal::Timer::new(dp.TIMER0_NS);
+    let mut serial_timer = nrf9160_hal::Timer::new(dp.TIMER0_NS);
 
     // Initialize the modem
     nrfxlib::init().unwrap();
     let at_socket = nrfxlib::at::AtSocket::new().unwrap();
 
-    let mut cmd_buffer = [0; 1024];
-    let mut byte_buffer = [0u8;1];
+    let mut buffer = [0; 1024];
 
     serial.write_str("Starting modem connection\r\n").unwrap();
     defmt::info!("Starting modem connection");
 
     loop {
         // Write the response from the AT Socket to the serial console
-        if let Some(length) = at_socket.recv(&mut cmd_buffer).unwrap() {
+        if let Some(length) = at_socket.recv(&mut buffer).unwrap() {
             if length != 0 {
                 defmt::info!(
                     "Sending to serial: {}",
-                    core::str::from_utf8(&cmd_buffer[..length]).unwrap()
+                    core::str::from_utf8(&buffer[..length]).unwrap()
                 );
-                serial.write(&cmd_buffer[..length]).unwrap();
+                serial.write(&buffer[..length]).unwrap();
             }
         }
-        let mut i = 0;
-        // Read from the serial console until the timeout is reached, then send to AT_SOCKET
-        loop {
-            serial.read(&mut byte_buffer).unwrap();
-            if byte_buffer[0] == 13 {
-                at_socket.write(&cmd_buffer[..i]).unwrap();
-                break
-            } else {
-                cmd_buffer[i] = byte_buffer[0];
-                serial.write(&byte_buffer).unwrap();
-                i += 1;
+
+        if let Err(nrf9160_hal::uarte::Error::Timeout(length)) =
+            serial.read_timeout(&mut buffer, &mut serial_timer, MILLISECOND_CYCLES * 100)
+        {
+            if length != 0 {
+                defmt::info!(
+                    "Sending to AT: {}",
+                    core::str::from_utf8(&buffer[..length]).unwrap()
+                );
+                at_socket.write(&buffer[..length]).unwrap();
             }
         }
-        // if let Err(nrf9160_hal::uarte::Error::Timeout(length)) =
-        //     serial.read_timeout(&mut cmd_buffer, &mut serial_timer, MILLISECOND_CYCLES * 1000)
-        // {
-        //     if length != 0 {
-        //         defmt::info!(
-        //             "Sending to AT: {}",
-        //             core::str::from_utf8(&cmd_buffer[..length]).unwrap()
-        //         );
-        //         at_socket.write(&cmd_buffer[..length]).unwrap();
-        //     }
-        // }
     }
 }
 
