@@ -1,5 +1,5 @@
 //! A simple program that connects to serial and relays the socket AT commands to it.
-//! With this you can talk directly to the nrf modem from the PC
+//! With this you can talk directly to the nrf modem with nrfConnect LTE Link Monitor
 
 #![no_main]
 #![no_std]
@@ -7,9 +7,6 @@
 // links in a minimal version of libc
 extern crate tinyrlibc;
 
-use core::fmt::Write;
-
-use defmt::unwrap;
 use nrf9160_hal::{
     gpio,
     pac::{self, interrupt},
@@ -21,8 +18,9 @@ const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let mut cp = unwrap!(cortex_m::Peripherals::take());
-    let dp = unwrap!(nrf9160_hal::pac::Peripherals::take());
+    // Take ownership of the chip and device peripherals
+    let mut cp = cortex_m::Peripherals::take().unwrap();
+    let dp = nrf9160_hal::pac::Peripherals::take().unwrap();
 
     // Enable the modem interrupts
     unsafe {
@@ -34,7 +32,7 @@ fn main() -> ! {
         cp.NVIC.set_priority(pac::Interrupt::IPC, 0 << 5);
     }
 
-    // Set up the serial
+    // Set up the serial: Icarus Pins(6,9), Stratus Pins(5,6)
     let pins0 = gpio::p0::Parts::new(dp.P0_NS);
     let uart_pins = uarte::Pins {
         rxd: pins0.p0_05.into_floating_input().degrade(),
@@ -59,50 +57,43 @@ fn main() -> ! {
 
     let mut buffer = [0; 1024];
 
-    serial.write_str("Starting modem connection\r\n").unwrap();
-    defmt::info!("Starting modem connection");
-
     loop {
         // Write the response from the AT Socket to the serial console
+        // The nrfxlib is written in C which has null terminated strings
+        // write length - 1 to not send nulls to LTE Link
         if let Some(length) = at_socket.recv(&mut buffer).unwrap() {
             if length != 0 {
-                defmt::info!(
-                    "Sending to serial: {}",
-                    core::str::from_utf8(&buffer[..length]).unwrap()
-                );
-                serial.write(&buffer[..length]).unwrap();
+                serial.write(&buffer[..length-1]).unwrap();
             }
         }
-
+        // Read blocking the AT command input into our buffer with a 20ms timeout
+        // Then send the command to the at_socket and wait for the response
+        // 20 ms worked the best with LTE Link, this can be increased for manual typing
         if let Err(nrf9160_hal::uarte::Error::Timeout(length)) =
-            serial.read_timeout(&mut buffer, &mut serial_timer, MILLISECOND_CYCLES * 100)
+            serial.read_timeout(&mut buffer, &mut serial_timer, MILLISECOND_CYCLES * 20)
         {
             if length != 0 {
-                defmt::info!(
-                    "Sending to AT: {}",
-                    core::str::from_utf8(&buffer[..length]).unwrap()
-                );
                 at_socket.write(&buffer[..length]).unwrap();
             }
         }
     }
 }
 
-/// Interrupt Handler for LTE related hardware. Defer straight to the library.
+// Interrupt Handler for LTE related hardware. Defer straight to the library.
 #[interrupt]
 fn EGU1() {
     nrfxlib::application_irq_handler();
     cortex_m::asm::sev();
 }
 
-/// Interrupt Handler for LTE related hardware. Defer straight to the library.
+// Interrupt Handler for LTE related hardware. Defer straight to the library.
 #[interrupt]
 fn EGU2() {
     nrfxlib::trace_irq_handler();
     cortex_m::asm::sev();
 }
 
-/// Interrupt Handler for LTE related hardware. Defer straight to the library.
+// Interrupt Handler for LTE related hardware. Defer straight to the library.
 #[interrupt]
 fn IPC() {
     nrfxlib::ipc_irq_handler();
