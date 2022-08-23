@@ -4,16 +4,20 @@
 // links in a minimal version of libc
 extern crate tinyrlibc;
 
-use defmt::{println, unwrap};
+// use defmt::{println, unwrap};
 use nrf9160_hal::pac::{self, interrupt};
+use nrf_modem_nal::embedded_nal::{SocketAddr, UdpClientStack};
 use propane_monitor as _; // global logger + panicking-behavior + memory layout
 
 // const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let mut cp = unwrap!(cortex_m::Peripherals::take());
-    let _dp = unwrap!(nrf9160_hal::pac::Peripherals::take());
+    let mut cp = cortex_m::Peripherals::take().unwrap();
+    let dp = nrf9160_hal::pac::Peripherals::take().unwrap();
+
+    // Disable uarte to reduce power consumption
+    dp.UARTE0_NS.enable.write(|w| w.enable().disabled());
 
     // Enable the modem interrupts
     unsafe {
@@ -26,29 +30,19 @@ fn main() -> ! {
     }
 
     // Initialize the modem
-    nrfxlib::init().unwrap();
+    let mut modem = nrf_modem_nal::Modem::new(None).unwrap();
+    let mut lte = modem.lte_socket().unwrap();
+    modem.lte_connect(&mut lte).unwrap();
 
-    for cmd in [
-        "AT%SHORTSWVER",         // Check modem firmware version
-        "AT%XBANDLOCK=1,'1000'", // Set permanent band-lock on Band 4
-        "AT+CFUN=1",             // Sets Radio to Normal
-        "AT+CFUN?",              // Read Radio Status
-        "AT%XCBAND",             // Check current band
-        "AT+CFUN=0",             // Turn Radio Off
-    ] {
-        print_at_results(cmd);
-    }
+    let mut udp_socket = modem.socket().unwrap();
+
+    modem.connect(
+        &mut udp_socket,
+        SocketAddr::V4("142.250.179.211:80".parse().unwrap())
+    ).unwrap();
+
 
     propane_monitor::exit();
-}
-
-/// Print AT command results
-fn print_at_results(cmd: &str) {
-    if let Err(_e) = nrfxlib::at::send_at_command(cmd, |s| {
-        println!("> {}", s);
-    }) {
-        println!("Err running {}: error", cmd);
-    }
 }
 
 /// Interrupt Handler for LTE related hardware. Defer straight to the library.

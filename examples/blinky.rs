@@ -15,8 +15,8 @@ fn main() -> ! {
     let port0 = gpio::p0::Parts::new(p.P0_NS);
 
     // Blue LED for the Conexio Stratus board
-    // let mut blue_led = port0.p0_03.into_push_pull_output(Level::Low);
-    let mut blue_led = port0.p0_29.into_push_pull_output(Level::Low);
+    let mut blue_led = port0.p0_03.into_push_pull_output(Level::Low);
+    //let mut blue_led = port0.p0_29.into_push_pull_output(Level::Low);
 
     // Uncomment the line below if you are using the Icarus board. (po_10 = Red, p0_11 = Green, p0_12 = Blue)
     // let mut blue_led = port0.p0_12.into_push_pull_output(Level::Low);
