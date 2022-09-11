@@ -19,9 +19,9 @@ pub fn exit() -> ! {
     }
 }
 
-#[link_section = ".spm"]
-#[used]
-static SPM: [u8; 24052] = *include_bytes!("zephyr.bin");
+// #[link_section = ".spm"]
+// #[used]
+// static SPM: [u8; 24052] = *include_bytes!("zephyr.bin");
 
 // defmt-test 0.3.0 has the limitation that this `#[tests]` attribute can only be used
 // once within a crate. the module can be in any file but there can only be at most

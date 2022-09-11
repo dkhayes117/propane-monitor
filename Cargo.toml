@@ -17,6 +17,7 @@ nrf9160-hal = "0.15.1"
 nrfxlib = "0.6.0"
 tinyrlibc = "0.2.2"
 nrf-modem-nal = "0.1.2"
+heapless = "0.7.16"
 
 # This patch fixes a dependency collison between different versions of nrf9160-pac
 # The hal uses 0.11.0 and nrfxlib uses 0.2.1 of the pac -> rust-lld: error: duplicate symbol: DEVICE_PERIPHERALS

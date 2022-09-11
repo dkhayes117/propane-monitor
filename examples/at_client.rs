@@ -63,7 +63,7 @@ fn main() -> ! {
         // write length - 1 to not send nulls to LTE Link
         if let Some(length) = at_socket.recv(&mut buffer).unwrap() {
             if length != 0 {
-                serial.write(&buffer[..length-1]).unwrap();
+                serial.write(&buffer[..length - 1]).unwrap();
             }
         }
         // Read blocking the AT command input into our buffer with a 20ms timeout
