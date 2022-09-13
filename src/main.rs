@@ -5,8 +5,9 @@
 extern crate tinyrlibc;
 
 use defmt::{println, unwrap};
-use core::cell::RefCell;
-use cortex_m::interrupt::Mutex;
+use cortex_m::asm::wfe;
+// use core::cell::RefCell;
+// use cortex_m::interrupt::Mutex;
 use heapless::Vec;
 use nrf9160_hal::saadc::SaadcConfig;
 use nrf9160_hal::{
@@ -17,8 +18,10 @@ use nrf9160_hal::{
     pwm::Pwm,
     Saadc,
 };
+
 use nrf_modem_nal::embedded_nal::{heapless, SocketAddr, UdpClientStack};
-use propane_monitor as _; // global logger + panicking-behavior + memory layout
+use propane_monitor as _;
+use propane_monitor::{Ready, Sample, Sleep, State, Transmit}; // global logger + panicking-behavior + memory layout
 
 // const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
 
@@ -29,6 +32,8 @@ use propane_monitor as _; // global logger + panicking-behavior + memory layout
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    let mut p_monitor = propane_monitor::State::new();
+
     // Take ownership of core and device peripherals
     let mut cp = unwrap!(cortex_m::Peripherals::take());
     let dp = unwrap!(pac::Peripherals::take());
@@ -46,7 +51,7 @@ fn main() -> ! {
 
     // Configuration for reading hall effect voltage output
     let adc_config = SaadcConfig::default();
-    let mut adc = Saadc::new(p.SAADC_NS, adc_config);
+    let mut adc = Saadc::new(dp.SAADC_NS, adc_config);
 
     // Icarus uses the P0.13 pin internally for battery voltage measurement
     // P0.14 works on both Icarus and Stratus boards, or replace with a usable analog pin on your board
@@ -74,20 +79,45 @@ fn main() -> ! {
     //     SocketAddr::V4("142.250.179.211:80".parse().unwrap())
     // ).unwrap();
 
-    let mut sum = 0 as usize;
+    // State transition from Initialize to Ready
+    let p_monitor = p_monitor.next();
+    loop {
+        match &p_monitor {
 
-    // Take 10 adc measurements and calculate mean
-    for _ in 0..11 {
-        sum += adc.read(&mut adc_pin).unwrap();
+            State { state: Sleep {} } => { wfe() },
+
+            State { state: Ready {} }=> { let p_monitor = p_monitor.next(); }
+
+            State { state: Sample {} } => {
+                let mut sum = 0 as usize;
+
+                // Take 10 adc measurements and calculate mean
+                for _ in 0..11 {
+                    sum += adc.read(&mut adc_pin).unwrap() as usize;
+                }
+
+                // Push tank level value to payload buffer, if the buffer is
+                payload_buffer.push((sum / 10) as u8).unwrap();
+
+                if payload_buffer.is_full() {
+                    let p_monitor = p_monitor.payload_full_next();
+                } else {
+                    let p_monitor = p_monitor.payload_not_full_next();
+                }
+            },
+
+            State { state: Transmit {} }=> {
+                // TODO: Add code to transmit payload buffer
+                // clear buffer
+                payload_buffer.clear();
+                // Transition into Sleep state
+                p_monitor.next();
+            }
+
+        }
+
+
     }
-
-    // Push tank level value to payload buffer, if the buffer is
-    payload_buffer.push((sum / 10) as u8).unwrap();
-
-    if payload_buffer.is_full() {
-        println!("{payload.buffer}");
-    }
-    propane_monitor::exit();
 }
 
 /// Interrupt Handler for LTE related hardware. Defer straight to the library.
