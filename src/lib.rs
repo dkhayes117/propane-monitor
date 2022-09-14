@@ -3,10 +3,10 @@
 
 use defmt_rtt as _; // global logger
 use nrf9160_hal as _;
-use nrf9160_hal::pac;
+// use nrf9160_hal::pac;
 // memory layout
+// use pac::interrupt;
 use panic_probe as _;
-use pac::interrupt;
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is invoked
 #[defmt::panic_handler]
@@ -46,7 +46,9 @@ pub struct Transmit;
 /// State constructor must begin in the Initialize state
 impl State<Initialize> {
     pub fn new() -> State<Initialize> {
-        State { state: Initialize {} }
+        State {
+            state: Initialize {},
+        }
     }
 }
 
@@ -87,7 +89,6 @@ impl State<Transmit> {
         State { state: Sleep {} }
     }
 }
-
 
 // /// Interrupt Handler for LTE related hardware. Defer straight to the library.
 // #[interrupt]

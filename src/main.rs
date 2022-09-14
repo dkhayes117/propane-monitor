@@ -4,8 +4,8 @@
 // links in a minimal version of libc
 extern crate tinyrlibc;
 
-use defmt::{println, unwrap};
 use cortex_m::asm::wfe;
+use defmt::{println, unwrap};
 // use core::cell::RefCell;
 // use cortex_m::interrupt::Mutex;
 use heapless::Vec;
@@ -39,7 +39,7 @@ fn main() -> ! {
     let dp = unwrap!(pac::Peripherals::take());
 
     // A static buffer to hold data between data transfers which lives on the stack
-    let mut payload_buffer: Vec<u8,6> = Vec::new();
+    let mut payload_buffer: Vec<u8, 6> = Vec::new();
 
     // Get handle for port0 GPIO
     let port0 = gpio::p0::Parts::new(dp.P0_NS);
@@ -83,10 +83,11 @@ fn main() -> ! {
     let p_monitor = p_monitor.next();
     loop {
         match &p_monitor {
+            State { state: Sleep {} } => wfe(),
 
-            State { state: Sleep {} } => { wfe() },
-
-            State { state: Ready {} }=> { let p_monitor = p_monitor.next(); }
+            State { state: Ready {} } => {
+                let p_monitor = p_monitor.next();
+            }
 
             State { state: Sample {} } => {
                 let mut sum = 0 as usize;
@@ -104,19 +105,16 @@ fn main() -> ! {
                 } else {
                     let p_monitor = p_monitor.payload_not_full_next();
                 }
-            },
+            }
 
-            State { state: Transmit {} }=> {
+            State { state: Transmit {} } => {
                 // TODO: Add code to transmit payload buffer
                 // clear buffer
                 payload_buffer.clear();
                 // Transition into Sleep state
                 p_monitor.next();
             }
-
         }
-
-
     }
 }
 
