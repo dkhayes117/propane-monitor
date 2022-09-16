@@ -4,35 +4,43 @@
 // links in a minimal version of libc
 extern crate tinyrlibc;
 
+use core::cell::RefCell;
+
 use cortex_m::asm::wfe;
+use cortex_m::interrupt::Mutex;
+
 use defmt::{println, unwrap};
-// use core::cell::RefCell;
-// use cortex_m::interrupt::Mutex;
 use heapless::Vec;
+
 use nrf9160_hal::saadc::SaadcConfig;
-use nrf9160_hal::{
-    gpio,
-    pac::{self, interrupt},
-    prelude::*,
-    pwm,
-    pwm::Pwm,
-    Saadc,
-};
+use nrf9160_hal::{clocks, gpio, pac::{self, interrupt}, prelude::*, pwm, pwm::Pwm, rtc, Saadc};
+use nrf9160_hal::pac::RTC0_NS;
 
 use nrf_modem_nal::embedded_nal::{heapless, SocketAddr, UdpClientStack};
-use propane_monitor as _;
-use propane_monitor::{Ready, Sample, Sleep, State, Transmit}; // global logger + panicking-behavior + memory layout
+use propane_monitor as _; // global logger + panicking-behavior + memory layout
+use propane_monitor::{StateMachine, StateWrapper};
 
 // const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
 
+// How long to sleep: 15 seconds
+static SLEEP_MS: u32 =  15_000;
+
 // A static buffer to hold data between data transfers which lives on the stack
 // Mutex and RefCell are to ensure safe mutability
-// Used for async programming
 // static mut PAYLOAD_BUFFER: Mutex<RefCell<Vec<u8, 6>>> = Mutex::new(RefCell::new(Vec::new()));
+
+// Thread safe timer
+static RTC: Mutex<RefCell<Option<rtc::Rtc<RTC0_NS>>>> = Mutex::new(RefCell::new(None));
+// Global state
+static DEVICE: Mutex<RefCell<Option<StateMachine>>> = Mutex::new(RefCell::new(None));
+
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let mut p_monitor = propane_monitor::State::new();
+    // Construct our StateMachine and place in the DEVICE static variable
+    cortex_m::interrupt::free(|cs| {
+        DEVICE.borrow(cs).replace(Some(StateMachine::new()));
+    });
 
     // Take ownership of core and device peripherals
     let mut cp = unwrap!(cortex_m::Peripherals::take());
@@ -79,43 +87,97 @@ fn main() -> ! {
     //     SocketAddr::V4("142.250.179.211:80".parse().unwrap())
     // ).unwrap();
 
+    // Enable the low-frequency-clock which is required by the RTC
+    clocks::Clocks::new(dp.CLOCK_NS).start_lfclk();
+
+    // Setup our timer so we can wake up to do our work periodically
+    let prescaler = 0xFFF; // Max resolution of 125ms per tick
+    let mut rtc = rtc::Rtc::new(dp.RTC0_NS, prescaler).unwrap();
+
+    rtc.set_compare(
+        rtc::RtcCompareReg::Compare0,
+        SLEEP_MS / (1000 / (clocks::LFCLK_FREQ / (prescaler + 1))),
+    )
+        .unwrap();
+
+    rtc.enable_event(rtc::RtcInterrupt::Compare0);
+    rtc.enable_interrupt(rtc::RtcInterrupt::Compare0, Some(&mut cp.NVIC));
+    rtc.enable_counter();
+
+    // Place our timer in RTC mutex
+    cortex_m::interrupt::free(|cs| {
+        RTC.borrow(cs).replace(Some(rtc));
+    });
+
     // State transition from Initialize to Ready
-    let p_monitor = p_monitor.next();
-    loop {
-        match &p_monitor {
-            State { state: Sleep {} } => wfe(),
+    cortex_m::interrupt::free(|cs| {
+        let device = DEVICE.borrow(cs).borrow();
+        if let Some(device) = device.as_ref() {
+            device.state.step();
+    // let state = DEVICE.unwrap().state.step();
+            loop {
+                #[allow(unreachable_code)]
+                // cortex_m::interrupt::free(|cs| {
+                // let device = DEVICE.borrow(cs).borrow();
+                match device.state {
+                    // Shouldn't be in the Initialize state, but just in case...
+                    StateWrapper::Initialize(_) => { device.state.step(); }
+                    // Low power mode when in Sleep state
+                    StateWrapper::Sleep(_) => { wfe(); }
+                    // Ready state means things need to wake up before we do work!
+                    StateWrapper::Ready(_) => {
+                        // TODO: Add code for turning on ADC/Hall Effect pin, maybe some modem stuff
+                        device.state.step();
+                        // TODO: Once Hall Effect is on, there needs to be at least 10 us of delay before sampling can begin
+                    }
+                    StateWrapper::Sample(_) => {
+                         let mut sum = 0 as usize;
 
-            State { state: Ready {} } => {
-                let p_monitor = p_monitor.next();
-            }
+                         // Take 10 adc measurements and calculate mean
+                         for _ in 0..11 {
+                             sum += adc.read(&mut adc_pin).unwrap() as usize;
+                         }
 
-            State { state: Sample {} } => {
-                let mut sum = 0 as usize;
+                         // Push tank level value to payload buffer, if the buffer is
+                         payload_buffer.push((sum / 10) as u8).unwrap();
+                            device.state.step();
+                     }
 
-                // Take 10 adc measurements and calculate mean
-                for _ in 0..11 {
-                    sum += adc.read(&mut adc_pin).unwrap() as usize;
+                    StateWrapper::Transmit(_) => {
+                        // TODO: Add code to transmit payload buffer
+                        // clear buffer
+                        payload_buffer.clear();
+                        // Transition into Sleep state
+                        device.state.step();
+                    }
                 }
-
-                // Push tank level value to payload buffer, if the buffer is
-                payload_buffer.push((sum / 10) as u8).unwrap();
-
-                if payload_buffer.is_full() {
-                    let p_monitor = p_monitor.payload_full_next();
-                } else {
-                    let p_monitor = p_monitor.payload_not_full_next();
-                }
-            }
-
-            State { state: Transmit {} } => {
-                // TODO: Add code to transmit payload buffer
-                // clear buffer
-                payload_buffer.clear();
-                // Transition into Sleep state
-                p_monitor.next();
             }
         }
-    }
+    });
+
+    unreachable!();
+}
+
+/// Interrupt handler for our timer interrupt to awake from low power mode
+#[interrupt]
+#[allow(non_snake_case)]
+fn RTC0() {
+    println!("Timer Interrupt");
+    println!("Sleep time");
+    cortex_m::interrupt::free(|cs| {
+        let rtc = RTC.borrow(cs).borrow();
+        let device = DEVICE.borrow(cs).borrow();
+
+        // reset our timer
+        if let Some(rtc) = rtc.as_ref() {
+            rtc.reset_event(rtc::RtcInterrupt::Compare0);
+            rtc.clear_counter();
+        }
+        // This should put us from Sleep state to Ready State
+        if let Some(device) = device.as_ref() {
+            device.state.step();
+        }
+    });
 }
 
 /// Interrupt Handler for LTE related hardware. Defer straight to the library.
