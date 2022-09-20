@@ -6,7 +6,7 @@ extern crate tinyrlibc;
 
 use core::cell::RefCell;
 
-use cortex_m::asm::wfe;
+use cortex_m::asm::{delay, wfe};
 use cortex_m::interrupt::Mutex;
 
 use defmt::{println, unwrap};
@@ -19,6 +19,7 @@ use nrf9160_hal::pac::RTC0_NS;
 use nrf_modem_nal::embedded_nal::{heapless, SocketAddr, UdpClientStack};
 use propane_monitor as _; // global logger + panicking-behavior + memory layout
 use propane_monitor::{StateMachine, StateWrapper};
+use crate::gpio::Level;
 
 // const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
 
@@ -64,6 +65,9 @@ fn main() -> ! {
     // Icarus uses the P0.13 pin internally for battery voltage measurement
     // P0.14 works on both Icarus and Stratus boards, or replace with a usable analog pin on your board
     let mut adc_pin = port0.p0_14.into_floating_input();
+    // Config a power pin for the hall effect sensor so it can be powered down when not sampling
+    // let mut hall_effect_power = port0.p0_31.into_disconnected();
+    let mut hall_effect_power = port0.p0_31.into_push_pull_output(Level::Low);
 
     // Enable the modem interrupts
     unsafe {
@@ -76,6 +80,12 @@ fn main() -> ! {
     }
 
     // Initialize the modem
+    nrfxlib::init().unwrap();
+    nrfxlib::modem::set_system_mode(nrfxlib::modem::SystemMode::LteM).unwrap();
+    nrfxlib::modem::on().unwrap();
+    // nrfxlib::at::send_at_command(r#"AT+CPSMS=1,"","","00100001","00000000""#,|_| {}).unwrap();
+    nrfxlib::modem::off().unwrap();
+
     // let mut modem = nrf_modem_nal::Modem::new(None).unwrap();
     // let mut lte = modem.lte_socket().unwrap();
     // modem.lte_connect(&mut lte).unwrap();
@@ -120,19 +130,27 @@ fn main() -> ! {
             match device.state {
                 // Shouldn't be in the Initialize state, but just in case...
                 StateWrapper::Initialize(_) => {
+                    println!("{:?}", device.state);
                     device.state = device.state.step();
                     DEVICE.borrow(cs).replace(Some(device)); }
 
                 // Low power mode when in Sleep state
-                StateWrapper::Sleep(_) => { println!("{:?}", device.state); wfe(); }
+                StateWrapper::Sleep(_) => {
+                    println!("{:?}", device.state);
+                    wfe();
+                }
 
                 // Ready state means things need to wake up before we do work!
                 StateWrapper::Ready(_) => {
-                    // TODO: Add code for turning on ADC/Hall Effect pin, maybe some modem stuff
+                    // TODO: turn on modem
+                    hall_effect_power.set_high().unwrap();
+
                     println!("{:?}", device.state);
                     device.state = device.state.step();
                     DEVICE.borrow(cs).replace(Some(device));
-                    // TODO: Once Hall Effect is on, there needs to be at least 10 us of delay before sampling can begin
+                    // Once Hall Effect is on, there needs to be at least 10 us of delay before sampling can begin
+                    // 32_000_000 cycles * 10us = 320 cycles
+                    delay(500);
                 }
 
                 StateWrapper::Sample(_) => {
@@ -142,6 +160,9 @@ fn main() -> ! {
                     for _ in 0..11 {
                         sum += adc.read(&mut adc_pin).unwrap() as usize;
                     }
+
+                    // Turn off the hall sensor when done sampling
+                    hall_effect_power.set_low().unwrap();
 
                     // Push tank level value to payload buffer, if the buffer is
                     payload_buffer.push((sum / 10) as u8).unwrap();
