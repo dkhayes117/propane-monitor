@@ -2,6 +2,7 @@
 #![no_std]
 
 use defmt_rtt as _; // global logger
+use defmt::Format;
 use nrf9160_hal as _;
 // use nrf9160_hal::pac;
 // memory layout
@@ -22,26 +23,26 @@ pub fn exit() -> ! {
 }
 
 // This is our state machine.
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Format)]
 #[allow(dead_code)]
 pub struct State<S> {
     state: S,
 }
 
 /// List of possible states for the state machine
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Format)]
 pub struct Initialize;
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Format)]
 pub struct Sleep;
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Format)]
 pub struct Ready;
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Format)]
 pub struct Sample;
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Format)]
 pub struct Transmit;
 
 // Our Machine starts in the 'Waiting' state.
@@ -104,7 +105,7 @@ impl From<State<Transmit>> for State<Sleep> {
 
 
 // Here is we're building an enum so we can contain this state machine in a parent.
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Format)]
 #[allow(dead_code)]
 pub enum StateWrapper {
     Initialize(State<Initialize>),
@@ -129,7 +130,7 @@ impl StateWrapper {
 }
 
 // The structure with a parent.
-#[derive(Debug)]
+#[derive(Clone,Copy,Format)]
 pub struct StateMachine {
     //bottle_filling_machine: BottleFillingMachineWrapper,
     pub state: StateWrapper,

@@ -104,58 +104,64 @@ fn main() -> ! {
     rtc.enable_interrupt(rtc::RtcInterrupt::Compare0, Some(&mut cp.NVIC));
     rtc.enable_counter();
 
-    // Place our timer in RTC mutex
+    // Place our timer in RTC mutex, step our state machine to READY
     cortex_m::interrupt::free(|cs| {
         RTC.borrow(cs).replace(Some(rtc));
+        let mut device = DEVICE.borrow(cs).borrow().unwrap();
+
+        println!("{:?}", device.state);
+        device.state = device.state.step();
+        DEVICE.borrow(cs).replace(Some(device));
     });
 
-    // State transition from Initialize to Ready
-    cortex_m::interrupt::free(|cs| {
-        let device = DEVICE.borrow(cs).borrow();
-        if let Some(device) = device.as_ref() {
-            device.state.step();
-    // let state = DEVICE.unwrap().state.step();
-            loop {
-                #[allow(unreachable_code)]
-                // cortex_m::interrupt::free(|cs| {
-                // let device = DEVICE.borrow(cs).borrow();
-                match device.state {
-                    // Shouldn't be in the Initialize state, but just in case...
-                    StateWrapper::Initialize(_) => { device.state.step(); }
-                    // Low power mode when in Sleep state
-                    StateWrapper::Sleep(_) => { wfe(); }
-                    // Ready state means things need to wake up before we do work!
-                    StateWrapper::Ready(_) => {
-                        // TODO: Add code for turning on ADC/Hall Effect pin, maybe some modem stuff
-                        device.state.step();
-                        // TODO: Once Hall Effect is on, there needs to be at least 10 us of delay before sampling can begin
+    loop {
+        cortex_m::interrupt::free(|cs| {
+            let mut device = DEVICE.borrow(cs).borrow().unwrap();
+            match device.state {
+                // Shouldn't be in the Initialize state, but just in case...
+                StateWrapper::Initialize(_) => {
+                    device.state = device.state.step();
+                    DEVICE.borrow(cs).replace(Some(device)); }
+
+                // Low power mode when in Sleep state
+                StateWrapper::Sleep(_) => { println!("{:?}", device.state); wfe(); }
+
+                // Ready state means things need to wake up before we do work!
+                StateWrapper::Ready(_) => {
+                    // TODO: Add code for turning on ADC/Hall Effect pin, maybe some modem stuff
+                    println!("{:?}", device.state);
+                    device.state = device.state.step();
+                    DEVICE.borrow(cs).replace(Some(device));
+                    // TODO: Once Hall Effect is on, there needs to be at least 10 us of delay before sampling can begin
+                }
+
+                StateWrapper::Sample(_) => {
+                    let mut sum = 0 as usize;
+
+                    // Take 10 adc measurements and calculate mean
+                    for _ in 0..11 {
+                        sum += adc.read(&mut adc_pin).unwrap() as usize;
                     }
-                    StateWrapper::Sample(_) => {
-                         let mut sum = 0 as usize;
 
-                         // Take 10 adc measurements and calculate mean
-                         for _ in 0..11 {
-                             sum += adc.read(&mut adc_pin).unwrap() as usize;
-                         }
+                    // Push tank level value to payload buffer, if the buffer is
+                    payload_buffer.push((sum / 10) as u8).unwrap();
+                    println!("{:?}, {}", device.state, sum / 10);
+                    device.state = device.state.step();
+                    DEVICE.borrow(cs).replace(Some(device));
+                }
 
-                         // Push tank level value to payload buffer, if the buffer is
-                         payload_buffer.push((sum / 10) as u8).unwrap();
-                            device.state.step();
-                     }
-
-                    StateWrapper::Transmit(_) => {
-                        // TODO: Add code to transmit payload buffer
-                        // clear buffer
-                        payload_buffer.clear();
-                        // Transition into Sleep state
-                        device.state.step();
-                    }
+                StateWrapper::Transmit(_) => {
+                    // TODO: Add code to transmit payload buffer
+                    // clear buffer
+                    payload_buffer.clear();
+                    // Transition into Sleep state
+                    println!("{:?}", device.state);
+                    device.state = device.state.step();
+                    DEVICE.borrow(cs).replace(Some(device));
                 }
             }
-        }
-    });
-
-    unreachable!();
+        });
+    }
 }
 
 /// Interrupt handler for our timer interrupt to awake from low power mode
@@ -163,20 +169,19 @@ fn main() -> ! {
 #[allow(non_snake_case)]
 fn RTC0() {
     println!("Timer Interrupt");
-    println!("Sleep time");
     cortex_m::interrupt::free(|cs| {
         let rtc = RTC.borrow(cs).borrow();
-        let device = DEVICE.borrow(cs).borrow();
+        let mut device = DEVICE.borrow(cs).borrow().unwrap();
 
         // reset our timer
         if let Some(rtc) = rtc.as_ref() {
             rtc.reset_event(rtc::RtcInterrupt::Compare0);
             rtc.clear_counter();
         }
+
         // This should put us from Sleep state to Ready State
-        if let Some(device) = device.as_ref() {
-            device.state.step();
-        }
+        device.state = device.state.step();
+        DEVICE.borrow(cs).replace(Some(device));
     });
 }
 
