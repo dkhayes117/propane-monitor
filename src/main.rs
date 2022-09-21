@@ -12,19 +12,26 @@ use cortex_m::interrupt::Mutex;
 use defmt::{println, unwrap};
 use heapless::Vec;
 
-use nrf9160_hal::saadc::SaadcConfig;
-use nrf9160_hal::{clocks, gpio, pac::{self, interrupt}, prelude::*, pwm, pwm::Pwm, rtc, Saadc};
 use nrf9160_hal::pac::RTC0_NS;
+use nrf9160_hal::saadc::SaadcConfig;
+use nrf9160_hal::{
+    clocks, gpio,
+    pac::{self, interrupt},
+    prelude::*,
+    pwm,
+    pwm::Pwm,
+    rtc, Saadc,
+};
 
+use crate::gpio::{Level, OpenDrainConfig};
 use nrf_modem_nal::embedded_nal::{heapless, SocketAddr, UdpClientStack};
 use propane_monitor as _; // global logger + panicking-behavior + memory layout
 use propane_monitor::{StateMachine, StateWrapper};
-use crate::gpio::Level;
 
 // const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
 
 // How long to sleep: 15 seconds
-static SLEEP_MS: u32 =  15_000;
+static SLEEP_MS: u32 = 15_000;
 
 // A static buffer to hold data between data transfers which lives on the stack
 // Mutex and RefCell are to ensure safe mutability
@@ -34,7 +41,6 @@ static SLEEP_MS: u32 =  15_000;
 static RTC: Mutex<RefCell<Option<rtc::Rtc<RTC0_NS>>>> = Mutex::new(RefCell::new(None));
 // Global state
 static DEVICE: Mutex<RefCell<Option<StateMachine>>> = Mutex::new(RefCell::new(None));
-
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -48,7 +54,7 @@ fn main() -> ! {
     let dp = unwrap!(pac::Peripherals::take());
 
     // A static buffer to hold data between data transfers which lives on the stack
-    let mut payload_buffer: Vec<u8, 6> = Vec::new();
+    let mut payload_buffer: Vec<i16, 6> = Vec::new();
 
     // Get handle for port0 GPIO
     let port0 = gpio::p0::Parts::new(dp.P0_NS);
@@ -59,6 +65,7 @@ fn main() -> ! {
     dp.UARTE1_NS.enable.write(|w| w.enable().disabled());
 
     // Configuration for reading hall effect voltage output
+    // Default has Oversampling = 8 (2^3) times
     let adc_config = SaadcConfig::default();
     let mut adc = Saadc::new(dp.SAADC_NS, adc_config);
 
@@ -67,7 +74,9 @@ fn main() -> ! {
     let mut adc_pin = port0.p0_14.into_floating_input();
     // Config a power pin for the hall effect sensor so it can be powered down when not sampling
     // let mut hall_effect_power = port0.p0_31.into_disconnected();
-    let mut hall_effect_power = port0.p0_31.into_push_pull_output(Level::Low);
+    let mut hall_effect_power = port0
+        .p0_31
+        .into_open_drain_output(OpenDrainConfig::Disconnect0HighDrive1, Level::Low);
 
     // Enable the modem interrupts
     unsafe {
@@ -108,7 +117,7 @@ fn main() -> ! {
         rtc::RtcCompareReg::Compare0,
         SLEEP_MS / (1000 / (clocks::LFCLK_FREQ / (prescaler + 1))),
     )
-        .unwrap();
+    .unwrap();
 
     rtc.enable_event(rtc::RtcInterrupt::Compare0);
     rtc.enable_interrupt(rtc::RtcInterrupt::Compare0, Some(&mut cp.NVIC));
@@ -132,7 +141,8 @@ fn main() -> ! {
                 StateWrapper::Initialize(_) => {
                     println!("{:?}", device.state);
                     device.state = device.state.step();
-                    DEVICE.borrow(cs).replace(Some(device)); }
+                    DEVICE.borrow(cs).replace(Some(device));
+                }
 
                 // Low power mode when in Sleep state
                 StateWrapper::Sleep(_) => {
@@ -148,25 +158,20 @@ fn main() -> ! {
                     println!("{:?}", device.state);
                     device.state = device.state.step();
                     DEVICE.borrow(cs).replace(Some(device));
-                    // Once Hall Effect is on, there needs to be at least 10 us of delay before sampling can begin
-                    // 32_000_000 cycles * 10us = 320 cycles
-                    delay(500);
+                    // Hall effect sensor as as a power up time of 330us max, 175us typical
+                    // 32_000_000 cycles * 330us = 10_560 cycles
+                    delay(15_000);
                 }
 
                 StateWrapper::Sample(_) => {
-                    let mut sum = 0 as usize;
-
-                    // Take 10 adc measurements and calculate mean
-                    for _ in 0..11 {
-                        sum += adc.read(&mut adc_pin).unwrap() as usize;
-                    }
+                    let value = adc.read(&mut adc_pin).unwrap();
 
                     // Turn off the hall sensor when done sampling
                     hall_effect_power.set_low().unwrap();
 
                     // Push tank level value to payload buffer, if the buffer is
-                    payload_buffer.push((sum / 10) as u8).unwrap();
-                    println!("{:?}, {}", device.state, sum / 10);
+                    // payload_buffer.push(value).unwrap();
+                    println!("{:?}, {}", device.state, value);
                     device.state = device.state.step();
                     DEVICE.borrow(cs).replace(Some(device));
                 }

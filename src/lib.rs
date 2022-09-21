@@ -1,8 +1,8 @@
 #![no_main]
 #![no_std]
 
-use defmt_rtt as _; // global logger
 use defmt::Format;
+use defmt_rtt as _; // global logger
 use nrf9160_hal as _;
 // use nrf9160_hal::pac;
 // memory layout
@@ -23,26 +23,26 @@ pub fn exit() -> ! {
 }
 
 // This is our state machine.
-#[derive(Clone,Copy,Format)]
+#[derive(Clone, Copy, Format)]
 #[allow(dead_code)]
 pub struct State<S> {
     state: S,
 }
 
 /// List of possible states for the state machine
-#[derive(Clone,Copy,Format)]
+#[derive(Clone, Copy, Format)]
 pub struct Initialize;
 
-#[derive(Clone,Copy,Format)]
+#[derive(Clone, Copy, Format)]
 pub struct Sleep;
 
-#[derive(Clone,Copy,Format)]
+#[derive(Clone, Copy, Format)]
 pub struct Ready;
 
-#[derive(Clone,Copy,Format)]
+#[derive(Clone, Copy, Format)]
 pub struct Sample;
 
-#[derive(Clone,Copy,Format)]
+#[derive(Clone, Copy, Format)]
 pub struct Transmit;
 
 // Our Machine starts in the 'Waiting' state.
@@ -57,62 +57,49 @@ impl State<Initialize> {
 // The following are the defined transitions between states.
 impl From<State<Initialize>> for State<Ready> {
     fn from(_val: State<Initialize>) -> State<Ready> {
-        State {
-            state: Ready {},
-        }
+        State { state: Ready {} }
     }
 }
 
 impl From<State<Sleep>> for State<Ready> {
     fn from(_val: State<Sleep>) -> State<Ready> {
-        State {
-            state: Ready {},
-        }
+        State { state: Ready {} }
     }
 }
 
 impl From<State<Ready>> for State<Sample> {
     fn from(_val: State<Ready>) -> State<Sample> {
-        State {
-            state: Sample {},
-        }
+        State { state: Sample {} }
     }
 }
 
 impl From<State<Sample>> for State<Sleep> {
     fn from(_val: State<Sample>) -> State<Sleep> {
-        State {
-            state: Sleep {},
-        }
+        State { state: Sleep {} }
     }
 }
 
 impl From<State<Sample>> for State<Transmit> {
     fn from(_val: State<Sample>) -> State<Transmit> {
-        State {
-            state: Transmit {},
-        }
+        State { state: Transmit {} }
     }
 }
 
 impl From<State<Transmit>> for State<Sleep> {
     fn from(_val: State<Transmit>) -> State<Sleep> {
-        State {
-            state: Sleep {},
-        }
+        State { state: Sleep {} }
     }
 }
 
-
 // Here is we're building an enum so we can contain this state machine in a parent.
-#[derive(Clone,Copy,Format)]
+#[derive(Clone, Copy, Format)]
 #[allow(dead_code)]
 pub enum StateWrapper {
     Initialize(State<Initialize>),
-    Sleep     (State<Sleep>),
-    Ready     (State<Ready>),
-    Sample    (State<Sample>),
-    Transmit  (State<Transmit>),
+    Sleep(State<Sleep>),
+    Ready(State<Ready>),
+    Sample(State<Sample>),
+    Transmit(State<Transmit>),
 }
 
 // Defining a function which shifts the state along.
@@ -130,7 +117,7 @@ impl StateWrapper {
 }
 
 // The structure with a parent.
-#[derive(Clone,Copy,Format)]
+#[derive(Clone, Copy, Format)]
 pub struct StateMachine {
     //bottle_filling_machine: BottleFillingMachineWrapper,
     pub state: StateWrapper,

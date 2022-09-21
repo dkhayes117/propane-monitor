@@ -7,15 +7,15 @@ use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 use cortex_m::asm::{delay, wfe};
 use cortex_m::interrupt::Mutex;
-use nrf9160_hal::gpio::Level;
-use nrf9160_hal::{clocks, gpio, rtc};
 use defmt::println;
+use nrf9160_hal::gpio::Level;
 use nrf9160_hal::pac::{self, interrupt, RTC0_NS};
 use nrf9160_hal::prelude::OutputPin;
+use nrf9160_hal::{clocks, gpio, rtc};
 use propane_monitor as _; // global logger + panicking-behavior + memory layout
 
 // How long to sleep: 15 seconds
-static SLEEP_MS: u32 =  60 * 1000 / 4;
+static SLEEP_MS: u32 = 60 * 1000 / 4;
 // Thread safe timer
 static RTC: Mutex<RefCell<Option<rtc::Rtc<RTC0_NS>>>> = Mutex::new(RefCell::new(None));
 // Startup as if timer is already expired
