@@ -1,8 +1,10 @@
 #![no_main]
 #![no_std]
 
-use defmt::Format;
-use defmt_rtt as _; // global logger
+use defmt::{Format, println};
+use defmt_rtt as _;
+use heapless::String;
+// global logger
 use nrf9160_hal as _;
 // use nrf9160_hal::pac;
 // memory layout
@@ -23,110 +25,38 @@ pub fn exit() -> ! {
 }
 
 // This is our state machine.
-#[derive(Clone, Copy, Format)]
+#[derive(Clone, Copy, PartialEq, Format)]
 #[allow(dead_code)]
-pub struct State<S> {
-    state: S,
+pub enum State {
+    Initialize,
+    Sleep,
+    Ready,
+    Sample,
+    Transmit,
+    Failure, //(String<128>)
 }
 
-/// List of possible states for the state machine
-#[derive(Clone, Copy, Format)]
-pub struct Initialize;
-
-#[derive(Clone, Copy, Format)]
-pub struct Sleep;
-
-#[derive(Clone, Copy, Format)]
-pub struct Ready;
-
-#[derive(Clone, Copy, Format)]
-pub struct Sample;
-
-#[derive(Clone, Copy, Format)]
-pub struct Transmit;
-
-// Our Machine starts in the 'Waiting' state.
-impl State<Initialize> {
-    pub fn new() -> Self {
-        State {
-            state: Initialize {},
-        }
-    }
+#[derive(Format, Clone, Copy)]
+pub enum Event {
+    SetupComplete,
+    TimerInterrupt,
+    SensorPowerOn,
+    BufferFull,
+    BufferNotFull,
+    DataSent,
 }
 
-// The following are the defined transitions between states.
-impl From<State<Initialize>> for State<Ready> {
-    fn from(_val: State<Initialize>) -> State<Ready> {
-        State { state: Ready {} }
-    }
-}
-
-impl From<State<Sleep>> for State<Ready> {
-    fn from(_val: State<Sleep>) -> State<Ready> {
-        State { state: Ready {} }
-    }
-}
-
-impl From<State<Ready>> for State<Sample> {
-    fn from(_val: State<Ready>) -> State<Sample> {
-        State { state: Sample {} }
-    }
-}
-
-impl From<State<Sample>> for State<Sleep> {
-    fn from(_val: State<Sample>) -> State<Sleep> {
-        State { state: Sleep {} }
-    }
-}
-
-impl From<State<Sample>> for State<Transmit> {
-    fn from(_val: State<Sample>) -> State<Transmit> {
-        State { state: Transmit {} }
-    }
-}
-
-impl From<State<Transmit>> for State<Sleep> {
-    fn from(_val: State<Transmit>) -> State<Sleep> {
-        State { state: Sleep {} }
-    }
-}
-
-// Here is we're building an enum so we can contain this state machine in a parent.
-#[derive(Clone, Copy, Format)]
-#[allow(dead_code)]
-pub enum StateWrapper {
-    Initialize(State<Initialize>),
-    Sleep(State<Sleep>),
-    Ready(State<Ready>),
-    Sample(State<Sample>),
-    Transmit(State<Transmit>),
-}
-
-// Defining a function which shifts the state along.
-impl StateWrapper {
-    pub fn step(mut self) -> Self {
-        self = match self {
-            StateWrapper::Initialize(val) => StateWrapper::Ready(val.into()),
-            StateWrapper::Sleep(val) => StateWrapper::Ready(val.into()),
-            StateWrapper::Ready(val) => StateWrapper::Sample(val.into()),
-            StateWrapper::Sample(val) => StateWrapper::Transmit(val.into()),
-            StateWrapper::Transmit(val) => StateWrapper::Sleep(val.into()),
-        };
-        self
-    }
-}
-
-// The structure with a parent.
-#[derive(Clone, Copy, Format)]
-pub struct StateMachine {
-    //bottle_filling_machine: BottleFillingMachineWrapper,
-    pub state: StateWrapper,
-}
-
-impl StateMachine {
-    pub fn new() -> Self {
-        StateMachine {
-            state: StateWrapper::Initialize(State::new()),
+impl State {
+    pub fn step(self, event: Event) -> State {
+        match (self, event) {
+            ( State::Sleep, Event::TimerInterrupt ) => { State::Ready },
+            ( State::Initialize, Event::SetupComplete ) => { State::Ready },
+            ( State::Ready, Event::SensorPowerOn ) => { State::Sample },
+            ( State::Sample, Event::BufferNotFull ) => { State::Sleep },
+            ( State::Sample, Event::BufferFull ) => { State::Transmit },
+            ( State::Transmit, Event::DataSent ) => { State::Sleep },
+            ( _s, _e ) => { State::Failure }
+            // ( s, e ) => { State::Failure( String::from("Invalid (state,event) combination: ({:?}, {:?})") ) },
         }
     }
 }
