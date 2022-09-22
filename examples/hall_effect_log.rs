@@ -26,7 +26,7 @@ fn main() -> ! {
     let pwm = Pwm::new(p.PWM0_NS);
     pwm.set_output_pin(
         pwm::Channel::C0,
-        port0.p0_31.into_push_pull_output(Level::Low).degrade(),
+        port0.p0_10.into_push_pull_output(Level::Low).degrade(),
     );
 
     // 5% Duty Cycle at 50Hz for servo Control
@@ -55,7 +55,7 @@ fn main() -> ! {
     for (level, duty) in positions.iter() {
         // defmt::println!("Duty: {}",duty);
         pwm.set_duty_off_common(*duty);
-        delay(300_000_000);
+        delay(150_000_000);
         defmt::println!(
             "Gauge Level: {}%, Voltage Level: {}",
             level,

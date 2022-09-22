@@ -3,7 +3,7 @@
 
 use defmt::{Format, println};
 use defmt_rtt as _;
-use heapless::String;
+// use heapless::String;
 // global logger
 use nrf9160_hal as _;
 // use nrf9160_hal::pac;
@@ -25,7 +25,7 @@ pub fn exit() -> ! {
 }
 
 // This is our state machine.
-#[derive(Clone, Copy, PartialEq, Format)]
+#[derive(Format, Clone, Copy)]
 #[allow(dead_code)]
 pub enum State {
     Initialize,
@@ -36,7 +36,7 @@ pub enum State {
     Failure, //(String<128>)
 }
 
-#[derive(Format, Clone, Copy)]
+#[derive(Format)]
 pub enum Event {
     SetupComplete,
     TimerInterrupt,

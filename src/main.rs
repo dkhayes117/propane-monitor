@@ -4,6 +4,7 @@
 // links in a minimal version of libc
 extern crate tinyrlibc;
 
+use core::borrow::BorrowMut;
 use core::cell::RefCell;
 
 use cortex_m::asm::{delay, wfe};
@@ -39,22 +40,17 @@ static SLEEP_MS: u32 = 15_000;
 
 // Thread safe timer
 static RTC: Mutex<RefCell<Option<rtc::Rtc<RTC0_NS>>>> = Mutex::new(RefCell::new(None));
-// Global state
-static STATE: Mutex<RefCell<Option<State>>> = Mutex::new(RefCell::new(None));
+// Global state variable which begins in the 'Initialize' state
+static STATE: Mutex<RefCell<State>> = Mutex::new(RefCell::new(State::Initialize));
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    // Construct our StateMachine and place in the DEVICE static variable
-    cortex_m::interrupt::free(|cs| {
-        STATE.borrow(cs).replace(Some(State::Initialize));
-    });
-
     // Take ownership of core and device peripherals
     let mut cp = unwrap!(cortex_m::Peripherals::take());
     let dp = unwrap!(pac::Peripherals::take());
 
     // A static buffer to hold data between data transfers which lives on the stack
-    let mut payload_buffer: Vec<i16, 2> = Vec::new();
+    let mut payload_buffer: Vec<i16, 3> = Vec::new();
 
     // Get handle for port0 GPIO
     let port0 = gpio::p0::Parts::new(dp.P0_NS);
@@ -126,26 +122,26 @@ fn main() -> ! {
     // Place our timer in RTC mutex, step our state machine to READY
     cortex_m::interrupt::free(|cs| {
         RTC.borrow(cs).replace(Some(rtc));
-        let mut state = STATE.borrow(cs).borrow().unwrap();
+        let mut state = *STATE.borrow(cs).borrow();
 
         println!("{:?}", state);
         state = state.step(Event::SetupComplete);
-        STATE.borrow(cs).replace(Some(state));
+        STATE.borrow(cs).replace(state);
     });
 
     loop {
         cortex_m::interrupt::free(|cs| {
-            let mut state = STATE.borrow(cs).borrow().unwrap();
+            let mut state = *STATE.borrow(cs).borrow();
             match state {
                 // Shouldn't be in the Initialize state, but just in case...
                 State::Initialize => {
                     println!("{:?}", state);
                     state = state.step(Event::SetupComplete);
-                    STATE.borrow(cs).replace(Some(state));
                 }
 
                 // Low power mode when in Sleep state
                 State::Sleep => {
+                    // Do nothing until timer interrupt occurs
                     wfe();
                     println!("{:?}", state);
                 }
@@ -161,25 +157,26 @@ fn main() -> ! {
 
                     println!("{:?}", state);
                     state = state.step(Event::SensorPowerOn);
-                    STATE.borrow(cs).replace(Some(state));
                 }
 
                 State::Sample => {
                     let value = adc.read(&mut adc_pin).unwrap();
                     let mut event = Event::BufferNotFull;
 
+                    println!("{:?}, {}", state, value);
+
                     // Turn off the hall sensor when done sampling
                     hall_effect_power.set_low().unwrap();
 
-                    // Push tank level value to payload buffer, if the buffer is
-                    if payload_buffer.push(value).is_err() {
+                    // Push tank level value to payload buffer, if the buffer is full then transmit
+                    payload_buffer.push(value).unwrap();
+
+                    if payload_buffer.is_full() {
                         event = Event::BufferFull;
                         println!("Buffer is Full!");
                     };
 
-                    println!("{:?}, {}", state, value);
                     state = state.step(event);
-                    STATE.borrow(cs).replace(Some(state));
                 }
 
                 State::Transmit => {
@@ -191,7 +188,6 @@ fn main() -> ! {
                     // Transition into Sleep state
                     println!("{:?}", state);
                     state = state.step(Event::DataSent);
-                    STATE.borrow(cs).replace(Some(state));
                 }
 
                 State::Failure => {
@@ -199,6 +195,8 @@ fn main() -> ! {
                     propane_monitor::exit();
                 }
             }
+            // Update our global state
+            STATE.borrow(cs).replace(state);
         });
     }
 }
@@ -210,7 +208,7 @@ fn RTC0() {
     println!("Timer Interrupt");
     cortex_m::interrupt::free(|cs| {
         let rtc = RTC.borrow(cs).borrow();
-        let mut state = STATE.borrow(cs).borrow().unwrap();
+        let mut state = *STATE.borrow(cs).borrow();
 
         // reset our timer
         if let Some(rtc) = rtc.as_ref() {
@@ -220,7 +218,7 @@ fn RTC0() {
 
         // This should put us from Sleep state to Ready State
         state = state.step(Event::TimerInterrupt);
-        STATE.borrow(cs).replace(Some(state));
+        STATE.borrow(cs).replace(state);
     });
 }
 
