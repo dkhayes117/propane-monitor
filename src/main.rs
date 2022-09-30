@@ -4,7 +4,6 @@
 // links in a minimal version of libc
 extern crate tinyrlibc;
 
-use core::borrow::BorrowMut;
 use core::cell::RefCell;
 
 use cortex_m::asm::{delay, wfe};
@@ -190,8 +189,9 @@ fn main() -> ! {
                     state = state.step(Event::DataSent);
                 }
 
-                State::Failure => {
-                    println!("State Failure");
+                State::Failure(error) => {
+                    println!("{:?}: {:?}", state, error);
+                    // TODO: Add code to reset the device back into a good state
                     propane_monitor::exit();
                 }
             }
@@ -216,8 +216,10 @@ fn RTC0() {
             rtc.clear_counter();
         }
 
+        // The line below is an undefined transition which forces us in the Failure state
+        state = state.step(Event::DataSent);
         // This should put us from Sleep state to Ready State
-        state = state.step(Event::TimerInterrupt);
+        // state = state.step(Event::TimerInterrupt);
         STATE.borrow(cs).replace(state);
     });
 }

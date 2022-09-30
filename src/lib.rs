@@ -10,6 +10,8 @@ use nrf9160_hal as _;
 // memory layout
 // use pac::interrupt;
 use panic_probe as _;
+
+
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is invoked
 #[defmt::panic_handler]
@@ -23,17 +25,23 @@ pub fn exit() -> ! {
         cortex_m::asm::bkpt();
     }
 }
+// Error types
+#[derive(Format, Clone, Copy)]
+pub enum Error {
+    LTEConnectionFailure,
+    TransmitFailure,
+    UndefinedTransition,
+}
 
 // This is our state machine.
 #[derive(Format, Clone, Copy)]
-#[allow(dead_code)]
 pub enum State {
     Initialize,
     Sleep,
     Ready,
     Sample,
     Transmit,
-    Failure, //(String<128>)
+    Failure(Error),
 }
 
 #[derive(Format)]
@@ -55,49 +63,13 @@ impl State {
             ( State::Sample, Event::BufferNotFull ) => { State::Sleep },
             ( State::Sample, Event::BufferFull ) => { State::Transmit },
             ( State::Transmit, Event::DataSent ) => { State::Sleep },
-            ( _s, _e ) => { State::Failure }
+            ( _s, _e ) => { State::Failure( Error::UndefinedTransition ) }
             // ( s, e ) => { State::Failure( String::from("Invalid (state,event) combination: ({:?}, {:?})") ) },
         }
     }
 }
 
-// /// Interrupt Handler for LTE related hardware. Defer straight to the library.
-// #[interrupt]
-// #[allow(non_snake_case)]
-// pub fn EGU1() {
-//     nrfxlib::application_irq_handler();
-//     cortex_m::asm::sev();
-// }
-//
-// /// Interrupt Handler for LTE related hardware. Defer straight to the library.
-// #[interrupt]
-// #[allow(non_snake_case)]
-// pub fn EGU2() {
-//     nrfxlib::trace_irq_handler();
-//     cortex_m::asm::sev();
-// }
-//
-// /// Interrupt Handler for LTE related hardware. Defer straight to the library.
-// #[interrupt]
-// #[allow(non_snake_case)]
-// pub fn IPC() {
-//     nrfxlib::ipc_irq_handler();
-//     cortex_m::asm::sev();
-// }
 // #[link_section = ".spm"]
 // #[used]
 // static SPM: [u8; 24052] = *include_bytes!("zephyr.bin");
 
-// defmt-test 0.3.0 has the limitation that this `#[tests]` attribute can only be used
-// once within a crate. the module can be in any file but there can only be at most
-// one `#[tests]` module in this library crate
-#[cfg(test)]
-#[defmt_test::tests]
-mod unit_tests {
-    use defmt::assert;
-
-    #[test]
-    fn it_works() {
-        assert!(true)
-    }
-}
