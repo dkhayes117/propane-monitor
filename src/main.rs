@@ -10,23 +10,24 @@ use cortex_m::asm::{delay, wfe};
 use cortex_m::interrupt::Mutex;
 
 use defmt::{println, unwrap};
-use heapless::Vec;
 
 use nrf9160_hal::pac::RTC0_NS;
 use nrf9160_hal::saadc::SaadcConfig;
 use nrf9160_hal::{
-    clocks, gpio,
+    clocks,
+    gpio,
     pac::{self, interrupt},
     prelude::*,
-    pwm,
-    pwm::Pwm,
-    rtc, Saadc,
+    // pwm,
+    // pwm::Pwm,
+    rtc,
+    Saadc,
 };
 
 use crate::gpio::{Level, OpenDrainConfig};
-use nrf_modem_nal::embedded_nal::{heapless, SocketAddr, UdpClientStack};
+// use nrf_modem_nal::embedded_nal::{heapless, SocketAddr, UdpClientStack};
 use propane_monitor as _; // global logger + panicking-behavior + memory layout
-use propane_monitor::{State, Event};
+use propane_monitor::{Event, Payload, State};
 
 // const MILLISECOND_CYCLES: u32 = nrf9160_hal::Timer::<pac::TIMER0_NS>::TICKS_PER_SECOND / 1000;
 
@@ -49,7 +50,7 @@ fn main() -> ! {
     let dp = unwrap!(pac::Peripherals::take());
 
     // A static buffer to hold data between data transfers which lives on the stack
-    let mut payload_buffer: Vec<i16, 3> = Vec::new();
+    let mut payload = Payload::new();
 
     // Get handle for port0 GPIO
     let port0 = gpio::p0::Parts::new(dp.P0_NS);
@@ -168,9 +169,9 @@ fn main() -> ! {
                     hall_effect_power.set_low().unwrap();
 
                     // Push tank level value to payload buffer, if the buffer is full then transmit
-                    payload_buffer.push(value).unwrap();
+                    payload.data.push(value).unwrap();
 
-                    if payload_buffer.is_full() {
+                    if payload.data.is_full() {
                         event = Event::BufferFull;
                         println!("Buffer is Full!");
                     };
@@ -182,15 +183,15 @@ fn main() -> ! {
                     // TODO: Add code to transmit payload buffer
 
                     // clear buffer after transmission
-                    payload_buffer.clear();
+                    payload.data.clear();
 
                     // Transition into Sleep state
                     println!("{:?}", state);
                     state = state.step(Event::DataSent);
                 }
 
-                State::Failure(error) => {
-                    println!("{:?}: {:?}", state, error);
+                State::Failure(_error) => {
+                    println!("{:?}", state);
                     // TODO: Add code to reset the device back into a good state
                     propane_monitor::exit();
                 }
