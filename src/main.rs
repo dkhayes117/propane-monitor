@@ -23,6 +23,7 @@ use nrf9160_hal::{
     rtc,
     Saadc,
 };
+use nrf_modem_nal::Modem;
 
 use crate::gpio::{Level, OpenDrainConfig};
 // use nrf_modem_nal::embedded_nal::{heapless, SocketAddr, UdpClientStack};
@@ -84,23 +85,14 @@ fn main() -> ! {
         cp.NVIC.set_priority(pac::Interrupt::IPC, 0 << 5);
     }
 
-    // Initialize the modem
-    nrfxlib::init().unwrap();
-    nrfxlib::modem::set_system_mode(nrfxlib::modem::SystemMode::LteM).unwrap();
-    nrfxlib::modem::on().unwrap();
+    // Intialize and setup modem
+    // nrfxlib::init().unwrap();
+    // nrfxlib::modem::set_system_mode(nrfxlib::modem::SystemMode::LteM).unwrap();
+    // nrfxlib::modem::on().unwrap();
     // nrfxlib::at::send_at_command(r#"AT+CPSMS=1,"","","00100001","00000000""#,|_| {}).unwrap();
-    nrfxlib::modem::off().unwrap();
+    // nrfxlib::modem::off().unwrap();
 
-    // let mut modem = nrf_modem_nal::Modem::new(None).unwrap();
-    // let mut lte = modem.lte_socket().unwrap();
-    // modem.lte_connect(&mut lte).unwrap();
-    //
-    // let mut udp_socket = modem.socket().unwrap();
-    //
-    // modem.connect(
-    //     &mut udp_socket,
-    //     SocketAddr::V4("142.250.179.211:80".parse().unwrap())
-    // ).unwrap();
+    let mut modem = Modem::new(None).unwrap();
 
     // Enable the low-frequency-clock which is required by the RTC
     clocks::Clocks::new(dp.CLOCK_NS).start_lfclk();
@@ -180,10 +172,8 @@ fn main() -> ! {
                 }
 
                 State::Transmit => {
-                    // TODO: Add code to transmit payload buffer
-
-                    // clear buffer after transmission
-                    payload.data.clear();
+                    // TODO: Error handling for data transmission
+                    payload.transmit_data(&mut modem).unwrap();
 
                     // Transition into Sleep state
                     println!("{:?}", state);
