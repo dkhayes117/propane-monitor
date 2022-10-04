@@ -208,7 +208,7 @@ fn RTC0() {
         }
 
         // The line below is an undefined transition which forces us in the Failure state
-        state = state.step(Event::DataSent);
+        state = state.step(Event::TimerInterrupt);
         // This should put us from Sleep state to Ready State
         // state = state.step(Event::TimerInterrupt);
         STATE.borrow(cs).replace(state);

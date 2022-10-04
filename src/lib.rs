@@ -18,7 +18,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use coap_lite::{CoapRequest, ContentFormat, RequestType};
-use nrf_modem_nal::embedded_nal::{nb, SocketAddr, UdpClientStack, Dns};
+use nrf_modem_nal::embedded_nal::{nb, SocketAddr, UdpClientStack};
 use nrf_modem_nal::Modem;
 
 use panic_probe as _;
@@ -95,7 +95,6 @@ pub struct Payload {
     pub data: Vec<i16,3>,
 }
 
-
 impl Payload {
     pub fn new() -> Self {
         Payload { data: Vec::new() }
@@ -105,7 +104,7 @@ impl Payload {
         //TODO: Finish CoAP implementation
         let mut request = CoapRequest::new();
         request.set_method(RequestType::Post);
-        request.set_path("coap://sandbox.drogue.cloud/v1/foo");
+        request.set_path("data");
         request.message.set_content_format(ContentFormat::ApplicationJSON);
         request.message.payload = serde_json::to_vec(&self).unwrap();
 
@@ -117,12 +116,11 @@ impl Payload {
 
         let mut udp_socket = modem.socket().unwrap();
 
-        // TODO: Change/check connect address
+        // TODO: How to use DTLS with this?
         nb::block!(modem.connect(
             &mut udp_socket,
-            //SocketAddr::V4("142.250.179.211:80".parse().unwrap())
-            modem.get_host_by_name(&request.get_path(),nrf_modem_nal::embedded_nal::AddrType::IPv4).unwrap(),
-        )).unwrap(); // ip.jsontest.com
+            SocketAddr::V4("65.108.135.161:5672".parse().unwrap())
+        )).unwrap(); // coap://sandbox.drogue.cloud/v1/foo
 
         nb::block!(modem.send(
             &mut udp_socket,
@@ -136,6 +134,7 @@ impl Payload {
     }
 }
 
+// An allocator is required for the coap-lite lib
 #[global_allocator]
 static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
 
